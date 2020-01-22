@@ -1,0 +1,120 @@
+import datetime
+import pytz
+import dateutil.parser
+from ruamel.yaml import YAML
+from ruamel.yaml.compat import StringIO
+
+import cachetools
+from flask import Flask, request, jsonify, render_template, make_response
+
+REPOS = cachetools.LRUCache(maxsize=128)
+RATES = cachetools.LRUCache(maxsize=96)
+
+START_TIME = datetime.datetime.fromisoformat("2020-01-01T00:00:00+00:00")
+TIME_INTERVAL = 60*5  # five minutes
+
+app = Flask(__name__)
+
+
+class MyYAML(YAML):
+    """dump yaml as string rippd from docs"""
+    def dump(self, data, stream=None, **kw):
+        inefficient = False
+        if stream is None:
+            inefficient = True
+            stream = StringIO()
+        YAML.dump(self, data, stream, **kw)
+        if inefficient:
+            return stream.getvalue()
+
+
+def _make_time_key(uptime):
+    dt = uptime.timestamp() - START_TIME.timestamp()
+    return int(dt // TIME_INTERVAL)
+
+
+def _make_est_from_time_key(key, iso=False):
+    est = pytz.timezone('US/Eastern')
+    fmt = '%Y-%m-%d %H:%M:%S %Z%z'
+    dt = datetime.timedelta(seconds=key * TIME_INTERVAL)
+    t = dt + START_TIME
+    t = t.astimezone(est)
+    if iso:
+        return t.isoformat()
+    else:
+        return t.strftime(fmt)
+
+
+def _make_report_data(iso=False):
+    now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+    know = _make_time_key(now)
+
+    rates = {}
+    for k in range(know, know-96, -1):
+        tstr = _make_est_from_time_key(k, iso=iso)
+        rates[tstr] = RATES.get(k, 0)
+
+    total = sum(v for v in rates.values())
+
+    return {
+        'total': total,
+        'rates': rates,
+        'repos': {k: v for k, v in REPOS.items()},
+    }
+
+
+@app.route('/')
+def index():
+    yaml = MyYAML()
+    return render_template(
+        'index.html',
+        report=yaml.dump(_make_report_data(iso=False)),
+    )
+
+
+@app.route('/report')
+def report():
+    return jsonify(_make_report_data(iso=True))
+
+
+@app.route('/payload', methods=['POST'])
+def payload():
+    global REPOS
+    global RATES
+
+    if request.method == 'POST':
+        event_type = request.headers.get('X-GitHub-Event')
+        repo = request.json['repository']['full_name']
+        print(" ")
+        print("event:", event_type)
+        print("    repo:", repo)
+
+        if event_type == 'ping':
+            return 'pong'
+        elif event_type == 'check_suite':
+            cs = request.json['check_suite']
+            if cs['app']['slug'] == 'github-actions':
+
+                print("    app:", cs['app']['slug'])
+                print("    action:", request.json['action'])
+                print("    status:", cs['status'])
+                print("    conclusion:", cs['conclusion'])
+                print("    updated_at:", cs['updated_at'])
+
+                uptime = dateutil.parser.isoparse(cs['updated_at'])
+                interval = _make_time_key(uptime)
+
+                if interval not in RATES:
+                    RATES[interval] = 0
+                RATES[interval] = RATES[interval] + 1
+
+                if repo not in REPOS:
+                    REPOS[repo] = 0
+                REPOS[repo] = REPOS[repo] + 1
+
+            return event_type
+        else:
+            return make_response(
+                "could not handle event: '%s'" % event_type,
+                404,
+            )
