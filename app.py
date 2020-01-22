@@ -84,23 +84,23 @@ def payload():
 
     if request.method == 'POST':
         event_type = request.headers.get('X-GitHub-Event')
-        repo = request.json['repository']['full_name']
         print(" ")
         print("event:", event_type)
-        print("    repo:", repo)
 
         if event_type == 'ping':
             return 'pong'
         elif event_type == 'check_suite':
+            repo = request.json['repository']['full_name']
             cs = request.json['check_suite']
+
+            print("    repo:", repo)
+            print("    app:", cs['app']['slug'])
+            print("    action:", request.json['action'])
+            print("    status:", cs['status'])
+            print("    conclusion:", cs['conclusion'])
+            print("    updated_at:", cs['updated_at'])
+
             if cs['app']['slug'] == 'github-actions':
-
-                print("    app:", cs['app']['slug'])
-                print("    action:", request.json['action'])
-                print("    status:", cs['status'])
-                print("    conclusion:", cs['conclusion'])
-                print("    updated_at:", cs['updated_at'])
-
                 uptime = dateutil.parser.isoparse(cs['updated_at'])
                 interval = _make_time_key(uptime)
 
