@@ -34,15 +34,12 @@ jobs:
 
 workflows:
   version: 2
-  commit:
-    jobs:
-      - build
   hourly:
     jobs:
       - build
     triggers:
       - schedule:
-          cron: "0 * * * *"
+          cron: "7 * * * *"
           filters:
             branches:
               only:
