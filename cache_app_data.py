@@ -13,12 +13,12 @@ latest_data = requests.get(
 
 # run git config
 subprocess.run(
-    "git config --global user.email 'becker.mr@gmai.com'",
+    "git config --global user.email 'circle_worker@email.com'",
     shell=True,
     check=True,
 )
 subprocess.run(
-    "git config --global user.name 'Matthew R Becker'",
+    "git config --global user.name 'circle worker'",
     shell=True,
     check=True,
 )

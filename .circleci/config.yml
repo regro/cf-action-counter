@@ -8,7 +8,7 @@ jobs:
     steps:
       - add_ssh_keys:
           fingerprints:
-            - "45:d8:81:51:95:7c:48:0a:7c:61:7b:d8:71:58:03:57"    
+            - "45:d8:81:51:95:7c:48:0a:7c:61:7b:d8:71:58:03:57"
 
       - checkout
 
@@ -43,7 +43,7 @@ workflows:
       - build
     triggers:
       - schedule:
-          cron: "7 * * * *"
+          cron: "0 * * * *"
           filters:
             branches:
               only:
