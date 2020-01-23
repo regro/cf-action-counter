@@ -31,3 +31,19 @@ jobs:
           command: |
             . venv/bin/activate
             python cache_app_data.py
+
+workflows:
+  version: 2
+  commit:
+    jobs:
+      - build
+  hourly:
+    jobs:
+      - build
+    triggers:
+      - schedule:
+          cron: "0 * * * *"
+          filters:
+            branches:
+              only:
+                - master
