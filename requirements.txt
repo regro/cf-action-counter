@@ -5,3 +5,4 @@ python-dateutil
 pytz
 pyyaml
 ruamel.yaml
+requests
