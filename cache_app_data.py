@@ -11,6 +11,18 @@ import requests
 latest_data = requests.get(
     "https://cf-action-counter.herokuapp.com/report").json()
 
+# run git config
+subprocess.run(
+    "git config --global user.email 'becker.mr@gmai.com'",
+    shell=True,
+    check=True,
+)
+subprocess.run(
+    "git config --global user.name 'Matthew R Becker'",
+    shell=True,
+    check=True,
+)
+
 # now update the repo
 with tempfile.TemporaryDirectory() as tmpdir:
     os.chdir(tmpdir)
