@@ -3,6 +3,7 @@ import pytz
 import dateutil.parser
 from ruamel.yaml import YAML
 from ruamel.yaml.compat import StringIO
+import requests
 
 import cachetools
 from flask import Flask, request, jsonify, render_template, make_response
@@ -16,6 +17,45 @@ TIME_INTERVAL = 60*5  # five minutes
 app = Flask(__name__)
 
 
+def _make_time_key(uptime):
+    dt = uptime.timestamp() - START_TIME.timestamp()
+    return int(dt // TIME_INTERVAL)
+
+
+# reload the cache
+RELOAD_CACHE = True
+
+
+def _reload_cache():
+    print(" ")
+    print("!!!!!!!!!!!!!! RELOADING THE CACHE !!!!!!!!!!!!!!")
+
+    global REPOS
+    global RATES
+    global RELOAD_CACHE
+
+    data = requests.get(
+        ("https://raw.githubusercontent.com/regro/cf-action-counter-db/"
+         "master/data/latest.json")).json()
+    for repo in data['repos']:
+        REPOS[repo] = data['repos'][repo]
+
+    for ts in data['rates']:
+        t = datetime.datetime.fromisoformat(ts).astimezone(pytz.UTC)
+        key = _make_time_key(t)
+        RATES[key] = data['rates'][ts]
+
+    print("reloaded %d repos" % len(REPOS))
+    print("reloaded %d rates" % len(RATES))
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    print(" ")
+
+
+if RELOAD_CACHE:
+    _reload_cache()
+    RELOAD_CACHE = False
+
+
 class MyYAML(YAML):
     """dump yaml as string rippd from docs"""
     def dump(self, data, stream=None, **kw):
@@ -26,11 +66,6 @@ class MyYAML(YAML):
         YAML.dump(self, data, stream, **kw)
         if inefficient:
             return stream.getvalue()
-
-
-def _make_time_key(uptime):
-    dt = uptime.timestamp() - START_TIME.timestamp()
-    return int(dt // TIME_INTERVAL)
 
 
 def _make_est_from_time_key(key, iso=False):
