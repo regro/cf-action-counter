@@ -135,7 +135,7 @@ def index():
 
 
 @app.route('/report', methods=['GET'])
-def report(name):
+def report():
     data = _make_report_data(iso=True)
     resp = make_response(jsonify(data))
     resp.headers['Access-Control-Allow-Origin'] = "*"
