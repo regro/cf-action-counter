@@ -134,8 +134,16 @@ def index():
     )
 
 
-@app.route('/report/<name>', methods=['GET'])
+@app.route('/report', methods=['GET'])
 def report(name):
+    data = _make_report_data(iso=True)
+    resp = make_response(jsonify(data))
+    resp.headers['Access-Control-Allow-Origin'] = "*"
+    return resp
+
+
+@app.route('/report/<name>', methods=['GET'])
+def report_name(name):
     data = _make_report_data(iso=True)
     resp = make_response(jsonify(data[name]))
     resp.headers['Access-Control-Allow-Origin'] = "*"
@@ -153,18 +161,22 @@ def payload():
 
         if event_type == 'ping':
             return 'pong'
-        elif event_type == 'check_suite':
+        elif event_type == 'check_run':
             repo = request.json['repository']['full_name']
-            cs = request.json['check_suite']
+            cs = request.json['check_run']
 
             print("    repo:", repo)
             print("    app:", cs['app']['slug'])
             print("    action:", request.json['action'])
             print("    status:", cs['status'])
             print("    conclusion:", cs['conclusion'])
-            print("    updated_at:", cs['updated_at'])
 
-            if cs['app']['slug'] in APP_DATA and cs['status'] == 'completed':
+            if (
+                cs['app']['slug'] in APP_DATA and
+                cs['status'] == 'completed' and
+                cs['conclusion'] != 'cancelled'
+            ):
+                print("    completed_at:", cs['completed_at'])
                 key = cs['app']['slug']
 
                 uptime = dateutil.parser.isoparse(cs['updated_at'])
@@ -183,6 +195,8 @@ def payload():
                     + 1
                 )
 
+            return event_type
+        elif event_type == 'check_suite':
             return event_type
         else:
             return make_response(
