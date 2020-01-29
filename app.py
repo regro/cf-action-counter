@@ -9,8 +9,20 @@ import cachetools
 from flask import (
     Flask, request, make_response, jsonify, render_template)
 
-REPOS = cachetools.LRUCache(maxsize=128)
-RATES = cachetools.LRUCache(maxsize=96)
+APP_DATA = {
+    'azure-pipelines': {
+        'repos': cachetools.LRUCache(maxsize=128),
+        'rates': cachetools.LRUCache(maxsize=96),
+    },
+    'travis-ci': {
+        'repos': cachetools.LRUCache(maxsize=128),
+        'rates': cachetools.LRUCache(maxsize=96),
+    },
+    'github-actions': {
+        'repos': cachetools.LRUCache(maxsize=128),
+        'rates': cachetools.LRUCache(maxsize=96),
+    }
+}
 
 START_TIME = datetime.datetime.fromisoformat("2020-01-01T00:00:00+00:00")
 TIME_INTERVAL = 60*5  # five minutes
@@ -31,23 +43,33 @@ def _reload_cache():
     print(" ")
     print("!!!!!!!!!!!!!! RELOADING THE CACHE !!!!!!!!!!!!!!")
 
-    global REPOS
-    global RATES
-    global RELOAD_CACHE
+    global APP_DATA
 
     data = requests.get(
         ("https://raw.githubusercontent.com/regro/cf-action-counter-db/"
          "master/data/latest.json")).json()
-    for repo in data['repos']:
-        REPOS[repo] = data['repos'][repo]
 
-    for ts in data['rates']:
-        t = datetime.datetime.fromisoformat(ts).astimezone(pytz.UTC)
-        key = _make_time_key(t)
-        RATES[key] = data['rates'][ts]
+    for slug in APP_DATA:
+        print('reloading data for %s' % slug)
 
-    print("reloaded %d repos" % len(REPOS))
-    print("reloaded %d rates" % len(RATES))
+        if slug not in data:
+            if slug != 'github-actions':
+                continue
+            else:
+                _data = data
+        else:
+            _data = data[slug]
+
+        for repo in _data['repos']:
+            APP_DATA[slug]['repos'][repo] = _data['repos'][repo]
+
+        for ts in _data['rates']:
+            t = datetime.datetime.fromisoformat(ts).astimezone(pytz.UTC)
+            key = _make_time_key(t)
+            APP_DATA[slug]['rates'][key] = _data['rates'][ts]
+
+        print("    reloaded %d repos" % len(APP_DATA[slug]['repos']))
+        print("    reloaded %d rates" % len(APP_DATA[slug]['rates']))
     print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     print(" ")
 
@@ -85,21 +107,25 @@ def _make_report_data(iso=False):
     now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
     know = _make_time_key(now)
 
-    rates = {}
-    for k in range(know, know-96, -1):
-        tstr = _make_est_from_time_key(k, iso=iso)
-        rates[tstr] = RATES.get(k, 0)
+    report = {}
+    for key in APP_DATA:
+        rates = {}
+        for k in range(know, know-96, -1):
+            tstr = _make_est_from_time_key(k, iso=iso)
+            rates[tstr] = APP_DATA[key]['rates'].get(k, 0)
 
-    total = sum(v for v in rates.values())
+        total = sum(v for v in rates.values())
 
-    return {
-        'total': total,
-        'rates': rates,
-        'repos': {k: v for k, v in REPOS.items()},
-    }
+        report[key] = {
+            'total': total,
+            'rates': rates,
+            'repos': {k: v for k, v in APP_DATA[key]['repos'].items()},
+        }
+
+    return report
 
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def index():
     yaml = MyYAML()
     return render_template(
@@ -108,18 +134,17 @@ def index():
     )
 
 
-@app.route('/report')
-def report():
+@app.route('/report/<name>', methods=['GET'])
+def report(name):
     data = _make_report_data(iso=True)
-    resp = make_response(jsonify(data))
+    resp = make_response(jsonify(data[name]))
     resp.headers['Access-Control-Allow-Origin'] = "*"
     return resp
 
 
 @app.route('/payload', methods=['POST'])
 def payload():
-    global REPOS
-    global RATES
+    global APP_DATA
 
     if request.method == 'POST':
         event_type = request.headers.get('X-GitHub-Event')
@@ -139,17 +164,24 @@ def payload():
             print("    conclusion:", cs['conclusion'])
             print("    updated_at:", cs['updated_at'])
 
-            if cs['app']['slug'] == 'github-actions':
+            if cs['app']['slug'] in APP_DATA and cs['status'] == 'completed':
+                key = cs['app']['slug']
+
                 uptime = dateutil.parser.isoparse(cs['updated_at'])
                 interval = _make_time_key(uptime)
+                if interval not in APP_DATA[key]['rates']:
+                    APP_DATA[key]['rates'][interval] = 0
+                APP_DATA[key]['rates'][interval] = (
+                    APP_DATA[key]['rates'][interval]
+                    + 1
+                )
 
-                if interval not in RATES:
-                    RATES[interval] = 0
-                RATES[interval] = RATES[interval] + 1
-
-                if repo not in REPOS:
-                    REPOS[repo] = 0
-                REPOS[repo] = REPOS[repo] + 1
+                if repo not in APP_DATA[key]['repos']:
+                    APP_DATA[key]['repos'][repo] = 0
+                APP_DATA[key]['repos'][repo] = (
+                    APP_DATA[key]['repos'][repo]
+                    + 1
+                )
 
             return event_type
         else:
