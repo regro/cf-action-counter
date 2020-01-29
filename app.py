@@ -6,7 +6,8 @@ from ruamel.yaml.compat import StringIO
 import requests
 
 import cachetools
-from flask import Flask, request, jsonify, render_template, make_response
+from flask import (
+    Flask, request, make_response, jsonify, render_template)
 
 REPOS = cachetools.LRUCache(maxsize=128)
 RATES = cachetools.LRUCache(maxsize=96)
@@ -109,7 +110,10 @@ def index():
 
 @app.route('/report')
 def report():
-    return jsonify(_make_report_data(iso=True))
+    data = _make_report_data(iso=True)
+    resp = make_response(jsonify(data))
+    resp.headers['Access-Control-Allow-Origin'] = "*"
+    return resp
 
 
 @app.route('/payload', methods=['POST'])
