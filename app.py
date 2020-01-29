@@ -179,7 +179,7 @@ def payload():
                 print("    completed_at:", cs['completed_at'])
                 key = cs['app']['slug']
 
-                uptime = dateutil.parser.isoparse(cs['updated_at'])
+                uptime = dateutil.parser.isoparse(cs['completed_at'])
                 interval = _make_time_key(uptime)
                 if interval not in APP_DATA[key]['rates']:
                     APP_DATA[key]['rates'][interval] = 0
