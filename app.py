@@ -173,8 +173,7 @@ def payload():
 
             if (
                 cs['app']['slug'] in APP_DATA and
-                cs['status'] == 'completed' and
-                cs['conclusion'] != 'cancelled'
+                cs['status'] == 'completed'
             ):
                 print("    completed_at:", cs['completed_at'])
                 key = cs['app']['slug']
