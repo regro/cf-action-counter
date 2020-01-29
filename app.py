@@ -134,7 +134,7 @@ def index():
     )
 
 
-@app.route('/report', methods=['GET'])
+@app.route('/db', methods=['GET'])
 def report():
     data = _make_report_data(iso=True)
     resp = make_response(jsonify(data))
