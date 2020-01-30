@@ -40,7 +40,8 @@ with tempfile.TemporaryDirectory() as tmpdir:
         with open("data/latest.json", "r") as fp:
             old_data = json.load(fp)
 
-        back_pth = "data/data_%s.json" % list(old_data["rates"].keys())[-1]
+        back_stamp = list(old_data["github-actions"]["rates"].keys())[-1]
+        back_pth = "data/data_%s.json" % back_stamp
         with open(back_pth, "w") as fp:
             json.dump(old_data, fp)
 
