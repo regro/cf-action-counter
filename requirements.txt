@@ -6,3 +6,4 @@ pytz
 pyyaml
 ruamel.yaml
 requests
+lxml

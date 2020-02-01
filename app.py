@@ -4,8 +4,11 @@ import dateutil.parser
 from ruamel.yaml import YAML
 from ruamel.yaml.compat import StringIO
 import requests
+import json
 
+import lxml.html
 import cachetools
+
 from flask import (
     Flask, request, make_response, jsonify, render_template)
 
@@ -24,8 +27,21 @@ APP_DATA = {
     }
 }
 
+STATUS_UPDATE_DELAY = 300
+NOSTATUS = 'No Status Available'
+STATUS_UPDATED = None
+STATUS_DATA = {
+    'azure': {
+        'status': NOSTATUS,
+    },
+    'webservices': {
+        'status': NOSTATUS,
+    },
+}
+
 START_TIME = datetime.datetime.fromisoformat("2020-01-01T00:00:00+00:00")
 TIME_INTERVAL = 60*5  # five minutes
+
 
 app = Flask(__name__)
 
@@ -146,6 +162,86 @@ def report():
 def report_name(name):
     data = _make_report_data(iso=True)
     resp = make_response(jsonify(data[name]))
+    resp.headers['Access-Control-Allow-Origin'] = "*"
+    return resp
+
+
+@app.route('/status', methods=['GET'])
+def status():
+    global STATUS_DATA
+    global STATUS_UPDATED
+
+    do_update = False
+    if STATUS_UPDATED is None:
+        do_update = True
+    else:
+        now = datetime.datetime.now().astimezone(pytz.UTC)
+        dt = now - STATUS_UPDATED
+        # five minutes
+        if dt.total_seconds() >= STATUS_UPDATE_DELAY:
+            do_update = True
+
+    if do_update:
+        try:
+            r = requests.get('https://status.dev.azure.com')
+            if r.status_code != 200:
+                STATUS_DATA['azure'] = NOSTATUS
+            else:
+                s = json.loads(
+                    lxml
+                    .html
+                    .fromstring(r.content)
+                    .get_element_by_id('dataProviders')
+                    .text
+                )
+
+                def _rec_search(d):
+                    if isinstance(d, dict):
+                        if 'health' in d and 'message' in d:
+                            return d['message']
+                        else:
+                            for v in d.values():
+                                if isinstance(v, dict):
+                                    val = _rec_search(v)
+                                    if val is not None:
+                                        return val
+                            return None
+                    else:
+                        return None
+
+                stat = _rec_search(s)
+
+                if stat is None:
+                    stat = NOSTATUS
+
+                STATUS_DATA['azure'] = stat
+        except requests.exceptions.RequestException:
+            STATUS_DATA['azure'] = NOSTATUS
+
+        try:
+            r = requests.post(
+                (
+                    'https://conda-forge.herokuapp.com'
+                    '/conda-webservice-update/hook'
+                ),
+                headers={'X-GitHub-Event': 'ping'}
+            )
+
+            if (
+                r.status_code != 200 or
+                r.elapsed.total_seconds() > 1 or
+                r.text != 'pong'
+            ):
+                STATUS_DATA['webservices'] = 'Degraded Performance'
+            else:
+                STATUS_DATA['webservices'] = 'All Systems Operational'
+        except requests.exceptions.RequestException:
+            STATUS_DATA['webservices'] = 'Degraded Performance'
+
+        STATUS_UPDATED = datetime.datetime.now().astimezone(pytz.UTC)
+        STATUS_DATA['updated_at'] = STATUS_UPDATED.isoformat()
+
+    resp = make_response(jsonify(STATUS_DATA))
     resp.headers['Access-Control-Allow-Origin'] = "*"
     return resp
 
